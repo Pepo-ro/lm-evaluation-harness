@@ -347,7 +347,7 @@ TASK_REGISTRY = {
     "jaqket_v2": jaqket_v2.JAQKETV2,
     **jaqket_v2.construct_tasks(),
     "mgsm": mgsm.MGSM,
-    **mgsm.construct_tasks()
+    **mgsm.construct_tasks(),
 }
 
 

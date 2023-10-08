@@ -76,7 +76,7 @@ def main():
         num_fewshot = [int(n) for n in args.num_fewshot.split(",")]
     else:
         num_fewshot = int(args.num_fewshot)
-    
+
     if args.limit is not None:
         if "," in args.limit:
             limit = [int(n) if n.isdigit() else float(n) for n in args.limit.split(",")]
@@ -107,7 +107,9 @@ def main():
     print(dumped)
 
     if args.output_path:
-        os.makedirs(os.path.dirname(args.output_path), exist_ok=True)
+        dir = os.path.dirname(args.output_path)
+        if dir:
+            os.makedirs(dir, exist_ok=True)
         with open(args.output_path, "w") as f:
             f.write(dumped)
 
