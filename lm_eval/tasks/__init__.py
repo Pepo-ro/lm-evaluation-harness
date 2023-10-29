@@ -31,6 +31,7 @@ from . import sciq
 from . import qasper
 from . import qa4mre
 from . import translation
+from . import jp_translation
 from . import headqa
 from . import mathqa
 from . import hendrycks_ethics
@@ -91,6 +92,10 @@ selected_translation_benchmarks = {
 all_translation_benchmarks = {
     ts: sacrebleu.get_langpairs_for_testset(ts)
     for ts in sacrebleu.get_available_testsets()
+}
+
+original_translation = {
+    "dataset/origin": ["jp-en"]
 }
 
 
@@ -202,6 +207,8 @@ TASK_REGISTRY = {
     **translation.create_tasks_from_benchmarks(gpt3_translation_benchmarks),
     # chef's selection, mostly wmt20
     **translation.create_tasks_from_benchmarks(selected_translation_benchmarks),
+    # original dataset
+    **jp_translation.create_tasks_from_benchmarks(original_translation),
     # Word Scrambling and Manipulation Tasks
     "anagrams1": unscramble.Anagrams1,
     "anagrams2": unscramble.Anagrams2,
