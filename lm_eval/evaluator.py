@@ -1,6 +1,7 @@
 import collections
 import itertools
 import numpy as np
+import pickle
 import random
 import lm_eval.metrics
 import lm_eval.models
@@ -296,6 +297,8 @@ def evaluate(
     # holds detailed responses for error analysis
     details = collections.defaultdict(list)
 
+    predict_set = collections.defaultdict(list)
+
     # unpack results and sort back in order and return control to Task
     for (task_name, doc_id), requests in process_res_queue.items():
         requests.sort(key=lambda x: x[0])
@@ -303,6 +306,8 @@ def evaluate(
 
         task = task_dict[task_name]
         doc = docs[(task_name, doc_id)]
+
+        predict_set[(task_name, doc_id)].append((doc, requests))
 
         metrics = task.process_results(doc, requests)
         if "details" in metrics:
@@ -341,6 +346,9 @@ def evaluate(
 
         if verbose and task_name in details:
             results[task_name]["details"] = details[task_name]
+
+    with open('path_to_file.pkl', 'wb') as f:
+        pickle.dump(predict_set, f)
 
     return {"results": dict(results), "versions": dict(versions)}
 
