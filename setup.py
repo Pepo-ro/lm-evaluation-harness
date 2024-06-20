@@ -31,7 +31,7 @@ setuptools.setup(
         "pycountry",
         "pytablewriter",
         "rouge-score>=0.0.4",
-        "sacrebleu==1.5.0",
+        "sacrebleu==2.3.1",
         "scikit-learn>=0.24.1",
         "sqlitedict",
         "torch>=1.7",
@@ -44,12 +44,13 @@ setuptools.setup(
         "multilingual": ["nagisa>=0.2.7", "jieba>=0.42.1"],
         "sentencepiece": ["sentencepiece>=0.1.98", "protobuf>=4.22.1"],
         "ja": [
-            "sentencepiece>=0.1.98", 
-            "protobuf>=4.22.1", 
-            "neologdn>=0.5.1", 
-            "emoji>=2.1.0", 
+            "sentencepiece>=0.1.98",
+            "protobuf>=4.22.1",
+            "neologdn>=0.5.1",
+            "emoji>=2.1.0",
             "fugashi[unidic-lite]",
             "mojimoji>=0.0.12",
-        ]
+        ],
+        "auto-gptq": ["auto-gptq[triton] @ git+https://github.com/PanQiWei/AutoGPTQ"],
     },
 )

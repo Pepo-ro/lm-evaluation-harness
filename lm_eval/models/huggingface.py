@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import transformers
 import peft
+from pathlib import Path
 from typing import List, Mapping, NewType, Optional, Tuple, Union
 from tqdm import tqdm
 
@@ -68,6 +69,7 @@ class HuggingFaceAutoLM(BaseLM):
     def __init__(
         self,
         pretrained: str,
+        quantized: Optional[Union[bool, str]] = None,
         tokenizer: Optional[str] = None,
         subfolder: Optional[str] = None,
         revision: Optional[str] = "main",
@@ -85,7 +87,8 @@ class HuggingFaceAutoLM(BaseLM):
         peft: str = None,
         load_in_8bit: Optional[bool] = False,
         trust_remote_code: Optional[bool] = False,
-        use_fast: Optional[bool] = True
+        use_fast: Optional[bool] = True,
+        gptq_use_triton: Optional[bool] = False,
     ):
         """Initializes a HuggingFace `AutoModel` and `AutoTokenizer` for evaluation.
         Args:
@@ -93,6 +96,9 @@ class HuggingFaceAutoLM(BaseLM):
                 The HuggingFace Hub model ID name or the path to a pre-trained
                 model to load. This is effectively the `pretrained_model_name_or_path`
                 argument of `from_pretrained` in the HuggingFace `transformers` API.
+            quantized (str or True, optional, defaults to None):
+                File name of a GPTQ quantized model to load. Set to `True` to use the
+                default name of the quantized model.
             add_special_tokens (bool, optional, defaults to True):
                 Whether to add special tokens to the input sequences. If `None`, the
                 default value will be set to `True` for seq2seq models (e.g. T5) and
@@ -141,6 +147,8 @@ class HuggingFaceAutoLM(BaseLM):
                 If True, will trust the remote code when loading the model.
             use_fast (bool, optional, defaults to True):
                 If True, will use the fast tokenizer when loading the model.
+            gptq_use_triton (bool, optional, defaults to False):
+                Use Triton for GPTQ inference.
         """
         super().__init__()
 
@@ -190,10 +198,12 @@ class HuggingFaceAutoLM(BaseLM):
         model_kwargs["load_in_8bit"] = load_in_8bit
         self.model = self._create_auto_model(
             pretrained=pretrained,
+            quantized=quantized,
             trust_remote_code=trust_remote_code,
             revision=revision,
             subfolder=subfolder,
             torch_dtype=_get_dtype(dtype, self._config),
+            gptq_use_triton=gptq_use_triton,
             **model_kwargs,
         )
         # note: peft_path can be different than pretrained model path
@@ -218,13 +228,16 @@ class HuggingFaceAutoLM(BaseLM):
         if not use_accelerate and not load_in_8bit:
             try:
                 self.model.to(self._device)
-            except:
-                print("Failed to place model onto specified device. This may be because the model is quantized via `bitsandbytes`. If the desired GPU is being used, this message is safe to ignore.")
+            except:  # noqa: E722
+                print(
+                    "Failed to place model onto specified device. This may be because the model is quantized via `bitsandbytes`. If the desired GPU is being used, this message is safe to ignore."
+                )
 
     def _create_auto_model(
         self,
         *,
         pretrained: str,
+        quantized: Optional[Union[bool, str]] = None,
         revision: str,
         subfolder: str,
         device_map: Optional[Union[str, _DeviceMapping]] = None,
@@ -233,18 +246,35 @@ class HuggingFaceAutoLM(BaseLM):
         load_in_8bit: Optional[bool] = False,
         trust_remote_code: Optional[bool] = False,
         torch_dtype: Optional[Union[str, torch.dtype]] = None,
+        gptq_use_triton: Optional[bool] = False,
     ) -> transformers.AutoModel:
         """Returns a pre-trained pytorch model from a pre-trained model configuration."""
-        model = self.AUTO_MODEL_CLASS.from_pretrained(
-            pretrained,
-            revision=revision + ("/" + subfolder if subfolder is not None else ""),
-            device_map=device_map,
-            max_memory=max_memory,
-            offload_folder=offload_folder,
-            load_in_8bit=load_in_8bit,
-            trust_remote_code=trust_remote_code,
-            torch_dtype=torch_dtype,
-        )
+        if quantized is None:
+            model = self.AUTO_MODEL_CLASS.from_pretrained(
+                pretrained,
+                revision=revision + ("/" + subfolder if subfolder is not None else ""),
+                device_map=device_map,
+                max_memory=max_memory,
+                offload_folder=offload_folder,
+                load_in_8bit=load_in_8bit,
+                trust_remote_code=trust_remote_code,
+                torch_dtype=torch_dtype,
+            )
+        else:
+            from auto_gptq import AutoGPTQForCausalLM
+
+            model = AutoGPTQForCausalLM.from_quantized(
+                pretrained,
+                model_basename=None if quantized is True else Path(quantized).stem,
+                device_map=device_map,
+                max_memory=max_memory,
+                trust_remote_code=trust_remote_code,
+                use_safetensors=True
+                if quantized is True
+                else quantized.endswith(".safetensors"),
+                use_triton=gptq_use_triton,
+                warmup_triton=gptq_use_triton,
+            )
         return model
 
     def _create_auto_model_peft(
@@ -370,7 +400,9 @@ class HuggingFaceAutoLM(BaseLM):
     def tok_decode(self, tokens: torch.LongTensor) -> List[str]:
         return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
 
-    def greedy_until(self, requests: List[Tuple[str, Union[List[str], str]]]) -> List[str]:
+    def greedy_until(
+        self, requests: List[Tuple[str, Union[List[str], str]]]
+    ) -> List[str]:
         def _collate(x):
             tokens = self.tok_encode(x[0])
             return len(tokens), x[0]
@@ -382,14 +414,18 @@ class HuggingFaceAutoLM(BaseLM):
         ):
             context = [c[0] for c in chunk]
             request_args = chunk[0][1]
-            stop_sequences = request_args if isinstance(request_args, list) else [request_args] # request_args["stop_sequences"]
-            max_generation_length = self._max_gen_toks # request_args["max_generation_length"]
+            stop_sequences = (
+                request_args if isinstance(request_args, list) else [request_args]
+            )  # request_args["stop_sequences"]
+            max_generation_length = (
+                self._max_gen_toks
+            )  # request_args["max_generation_length"]
 
             assert (
                 isinstance(max_generation_length, int) or max_generation_length is None
             )
             assert isinstance(stop_sequences, list) or stop_sequences is None
-            
+
             # TODO: Find a better way to handle stop sequences for 0-shot.
             if stop_sequences is None:
                 until = [self.eot_token]

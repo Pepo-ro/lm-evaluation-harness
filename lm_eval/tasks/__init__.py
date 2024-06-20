@@ -75,10 +75,14 @@ gpt3_translation_benchmarks = {
     "wmt16": ["en-ro", "ro-en", "de-en", "en-de"],  # German, Romanian
 }
 
+jp_translation_benchmarks = {
+    "wmt22": ["ja-en", "en-ja"]
+}
 
 # 28 total
 selected_translation_benchmarks = {
     **gpt3_translation_benchmarks,
+    **jp_translation_benchmarks,
     "wmt20": sacrebleu.get_langpairs_for_testset("wmt20"),
     "iwslt17": ["en-ar", "ar-en"],  # Arabic
 }
@@ -343,7 +347,7 @@ TASK_REGISTRY = {
     "jaqket_v2": jaqket_v2.JAQKETV2,
     **jaqket_v2.construct_tasks(),
     "mgsm": mgsm.MGSM,
-    **mgsm.construct_tasks()
+    **mgsm.construct_tasks(),
 }
 
 
